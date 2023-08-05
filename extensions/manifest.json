@@ -1,0 +1,17 @@
+{
+  "name": "タイトル",
+  "manifest_version": 3,
+  "version": "1.2",
+  "description": "説明",
+
+  "action": {
+    "default_popup": "./dist/index.html"
+  },
+  "permissions": ["tabs"],
+  "web_accessible_resources": [
+    {
+      "resources": ["/*"],
+      "matches": ["http://127.0.0.1:3000/*", "http://127.0.0.1:8000/*"]
+    }
+  ]
+}
