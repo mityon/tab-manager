@@ -24,3 +24,17 @@ No automated test framework or coverage target is configured. For changes to tab
 ## Commit & Pull Request Guidelines
 
 Git history currently has only an initial commit, so no commit format is established. Use short, imperative subjects that describe the change, such as `Fix duplicate tab removal`. In pull requests, explain the behavior changed, list validation commands and manual Chrome checks, link relevant issues, and include a popup screenshot for visual changes. Do not commit generated `.next/` or `extensions/dist/` files.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single-context layout with root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
