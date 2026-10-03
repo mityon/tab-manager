@@ -4,9 +4,8 @@
 
 html,
 body {
-  max-width: 1415px;
-  min-width: 1380px;
-  /* overflow-x: hidden; */
+  width: 680px;
+  overflow-x: hidden;
 }
 
 /* :root {
