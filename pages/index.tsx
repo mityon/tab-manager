@@ -1,9 +1,19 @@
 import Head from "next/head";
 import { useCallback, useEffect, useState } from "react";
-import { AiOutlineClose, AiOutlineDelete, AiOutlineSearch } from "react-icons/ai";
+import { AiOutlineArrowLeft, AiOutlineClose, AiOutlineDelete, AiOutlineSearch, AiOutlineSetting } from "react-icons/ai";
 
 type TabGroup = { hostname: string | null; tabs: chrome.tabs.Tab[] };
 type Scope = "current" | "all";
+type DeleteSettings = {
+  confirmSingleDelete: boolean;
+  confirmDomainDelete: boolean;
+  confirmDuplicateDelete: boolean;
+};
+const DEFAULT_DELETE_SETTINGS: DeleteSettings = {
+  confirmSingleDelete: false,
+  confirmDomainDelete: true,
+  confirmDuplicateDelete: true,
+};
 
 function getHostname(tab: chrome.tabs.Tab): string | null {
   if (!tab.url) return null;
@@ -58,6 +68,11 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [deleteSettings, setDeleteSettings] = useState<DeleteSettings>(DEFAULT_DELETE_SETTINGS);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const refreshTabs = useCallback(async () => {
     if (typeof chrome === "undefined" || !chrome.tabs) return;
@@ -89,6 +104,38 @@ export default function Home() {
     };
   }, [refreshTabs]);
 
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.local) {
+      setSettingsError("設定を利用できません。Chromeで拡張機能を再読み込みしてください。");
+      setSettingsLoading(false);
+      return;
+    }
+    chrome.storage.local.get(DEFAULT_DELETE_SETTINGS)
+      .then((result) => {
+        setDeleteSettings({
+          confirmSingleDelete: typeof result.confirmSingleDelete === "boolean" ? result.confirmSingleDelete : false,
+          confirmDomainDelete: typeof result.confirmDomainDelete === "boolean" ? result.confirmDomainDelete : true,
+          confirmDuplicateDelete: typeof result.confirmDuplicateDelete === "boolean" ? result.confirmDuplicateDelete : true,
+        });
+      })
+      .catch(() => setSettingsError("設定を読み込めませんでした。ポップアップを開き直してください。"))
+      .finally(() => setSettingsLoading(false));
+  }, []);
+
+  const updateDeleteSetting = async (key: keyof DeleteSettings, enabled: boolean) => {
+    if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+    setSettingsSaving(true);
+    setSettingsError(null);
+    try {
+      await chrome.storage.local.set({ [key]: enabled });
+      setDeleteSettings((current) => ({ ...current, [key]: enabled }));
+    } catch {
+      setSettingsError("設定を保存できませんでした。もう一度お試しください。");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
   const scopedTabs = tabs.filter((tab) => scope === "all" || tab.windowId === currentWindowId);
   const visibleTabs = scopedTabs.filter((tab) => matchesSearch(tab, search));
   const duplicateCount = getDuplicateIds(visibleTabs).length;
@@ -107,6 +154,7 @@ export default function Home() {
   };
 
   const closeTabs = async (mode: "single" | "domain" | "duplicates", value?: number | string) => {
+    if (busy || settingsLoading || settingsSaving) return;
     setBusy(true);
     setError(null);
     setNotice("");
@@ -120,8 +168,10 @@ export default function Home() {
         setNotice("閉じる対象のタブはありません。");
         return;
       }
-      const description = mode === "domain" ? `${value} のタブ` : "重複タブ";
-      if (mode !== "single" && !window.confirm(`${targetLabel}にある${description} ${ids.length} 件を閉じますか？${mode === "duplicates" ? "\n同じURLのタブを整理します。固定タブを残し、それ以外は選択中のタブを優先して1件残します。" : ""}`)) return;
+      const description = mode === "single" ? `「${targets.find((tab) => tab.id === value)?.title || "無題のタブ"}」` : mode === "domain" ? `${value} のタブ` : "重複タブ";
+      const needsConfirmation = mode === "duplicates" ? deleteSettings.confirmDuplicateDelete
+        : mode === "single" ? deleteSettings.confirmSingleDelete : deleteSettings.confirmDomainDelete;
+      if (needsConfirmation && !window.confirm(`${targetLabel}にある${description} ${ids.length} 件を閉じますか？${mode === "duplicates" ? "\n同じURLのタブを整理します。固定タブを残し、それ以外は選択中のタブを優先して1件残します。" : ""}`)) return;
       await chrome.tabs.remove(ids);
       setNotice(`${ids.length}件のタブを閉じました。`);
     } catch {
@@ -139,11 +189,46 @@ export default function Home() {
         <meta name="description" content="開いているタブを検索・整理" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
-      <main className="text-sm text-slate-800">
+      {showSettings ? (
+        <main className="min-h-[320px] text-sm text-slate-800">
+          <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-4">
+            <button type="button" autoFocus disabled={settingsSaving} onClick={() => setShowSettings(false)}
+              className="flex items-center gap-1 rounded-md px-2 py-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+              <AiOutlineArrowLeft aria-hidden="true" /> タブ一覧へ
+            </button>
+            <h1 className="text-lg font-semibold">設定</h1>
+          </header>
+          <section className="space-y-4 p-4" aria-labelledby="delete-settings-heading">
+            <h2 id="delete-settings-heading" className="font-semibold">削除前の確認</h2>
+            <p className="text-xs text-slate-500">オンにすると、タブを閉じる前に確認ダイアログを表示します。変更は自動保存されます。</p>
+            {settingsError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{settingsError}</p>}
+            {([
+              ["confirmSingleDelete", "個別削除", "タブの閉じるボタンを押したときに確認する"],
+              ["confirmDomainDelete", "ドメイン一括削除", "同じドメインのタブをまとめて閉じるときに確認する"],
+              ["confirmDuplicateDelete", "重複タブの整理", "重複するタブをまとめて閉じるときに確認する"],
+            ] as const).map(([key, label, description]) => (
+              <label key={key} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-slate-200 p-4">
+                <span><span className="block font-medium">{label}</span><span className="mt-1 block text-xs text-slate-500">{description}</span></span>
+                <input type="checkbox" checked={deleteSettings[key]}
+                  disabled={settingsLoading || settingsSaving || typeof chrome === "undefined" || !chrome.storage?.local}
+                  onChange={(event) => updateDeleteSetting(key, event.target.checked)}
+                  className="h-5 w-5 shrink-0 accent-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-40" />
+              </label>
+            ))}
+            <p role="status" className="text-xs text-slate-500">{settingsError ? "" : settingsLoading ? "設定を読み込んでいます…" : settingsSaving ? "保存しています…" : "設定は保存されています。"}</p>
+          </section>
+        </main>
+      ) : <main className="text-sm text-slate-800">
         <header className="sticky top-0 z-10 space-y-3 border-b border-slate-200 bg-white px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold tracking-tight">Tab Manager</h1>
-            <span className="text-xs text-slate-500">{scopedTabs.length} タブ</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">{scopedTabs.length} タブ</span>
+              <button type="button" disabled={busy} onClick={() => setShowSettings(true)} aria-label="設定を開く" title="設定"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100">
+                <AiOutlineSetting size="1.25rem" aria-hidden="true" />
+              </button>
+            </div>
           </div>
           <div className="flex gap-1 rounded-lg bg-slate-100 p-1" role="group" aria-label="対象ウィンドウ">
             {([ ["current", "このウィンドウ"], ["all", "すべて"] ] as const).map(([value, label]) => (
@@ -160,7 +245,7 @@ export default function Home() {
           </div>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-slate-500" aria-live="polite">{search.trim() ? `${scopedTabs.length}件中 ${visibleTabs.length}件` : "ドメイン別に表示"}</p>
-            <button type="button" disabled={loading || busy || duplicateCount === 0}
+            <button type="button" disabled={loading || busy || settingsLoading || settingsSaving || duplicateCount === 0}
               title="表示中の同じURLのタブを整理します。固定タブは閉じません。"
               className="rounded-md border border-slate-200 px-3 py-2 font-medium hover:bg-slate-100 disabled:cursor-default disabled:opacity-40"
               onClick={() => closeTabs("duplicates")}>
@@ -170,6 +255,7 @@ export default function Home() {
           <p className="text-xs text-slate-500">一括操作の対象：{targetLabel}</p>
         </header>
         <div className="px-3 pb-4 pt-2" aria-busy={busy || loading}>
+          {settingsError && <p role="alert" className="mb-2 rounded-lg bg-red-50 p-3 text-red-700">{settingsError}</p>}
           {error && <p role="alert" className="mb-2 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
           <p role="status" className={notice || busy ? "mb-2 rounded-lg bg-blue-50 p-3 text-blue-800" : "sr-only"}>{busy ? "タブを整理しています…" : notice}</p>
           {loading ? <p className="py-12 text-center text-slate-500">タブを読み込んでいます…</p> : visibleTabs.length === 0 ? (
@@ -182,7 +268,7 @@ export default function Home() {
               <div className="flex items-center gap-2 px-2 py-1">
                 <h2 className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-600" title={hostname ?? undefined}>{hostname ?? "その他のタブ"}</h2>
                 <span className="text-xs text-slate-400">{groupedTabs.length}件</span>
-                {hostname && <button type="button" disabled={busy} onClick={() => closeTabs("domain", hostname)}
+                {hostname && <button type="button" disabled={busy || settingsLoading || settingsSaving} onClick={() => closeTabs("domain", hostname)}
                   aria-label={`${targetLabel}にある ${hostname} のタブ ${groupedTabs.length} 件を閉じる`}
                   title={`${targetLabel}にある ${hostname} のタブを閉じる`}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40">
@@ -201,7 +287,7 @@ export default function Home() {
                       {tab.pinned && <span className="shrink-0 text-xs text-slate-500">固定</span>}
                       {tab.active && <span className="shrink-0 text-xs text-blue-700">{tab.windowId === currentWindowId ? "現在" : "選択中"}</span>}
                     </button>
-                    <button type="button" disabled={busy} aria-label={`${tab.title ?? "タブ"}を閉じる`} title="タブを閉じる"
+                    <button type="button" disabled={busy || settingsLoading || settingsSaving} aria-label={`${tab.title ?? "タブ"}を閉じる`} title="タブを閉じる"
                       onClick={() => closeTabs("single", tab.id)}
                       className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40">
                       <AiOutlineClose size="1rem" aria-hidden="true" />
@@ -212,7 +298,7 @@ export default function Home() {
             </section>
           ))}
         </div>
-      </main>
+      </main>}
     </>
   );
 }
