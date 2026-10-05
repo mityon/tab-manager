@@ -188,6 +188,7 @@ export default function Home() {
         <title>Tab Manager</title>
         <meta name="description" content="開いているタブを検索・整理" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
       </Head>
       {showSettings ? (
         <main className="min-h-[320px] text-sm text-slate-800">
