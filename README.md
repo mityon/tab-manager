@@ -15,10 +15,10 @@
 
 ## Chromeで使う
 
-1. 依存関係をインストールします。
+1. Node.js 24 LTS と Yarn Classic (1.x) を用意し、依存関係をインストールします。
 
    ```sh
-   yarn install
+   yarn install --frozen-lockfile
    ```
 
 2. ポップアップを静的ファイルとして書き出します。
@@ -47,4 +47,4 @@
 | `yarn build` | Next.jsの本番ビルドを作る |
 | `yarn export` | `extensions/dist/` にポップアップを書き出す |
 
-Next.js 13、TypeScript、Tailwind CSS、Chrome拡張機能 Manifest V3を使用しています。拡張機能はタブ操作用の `tabs` 権限と、確認設定の保存用の `storage` 権限を使います。
+Next.js 16、TypeScript、Tailwind CSS 3、Chrome拡張機能 Manifest V3を使用しています。拡張機能はタブ操作用の `tabs` 権限と、確認設定の保存用の `storage` 権限を使います。
