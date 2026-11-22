@@ -105,13 +105,15 @@ export default function Home() {
   }, [refreshTabs]);
 
   useEffect(() => {
-    if (typeof chrome === "undefined" || !chrome.storage?.local) {
-      setSettingsError("設定を利用できません。Chromeで拡張機能を再読み込みしてください。");
-      setSettingsLoading(false);
-      return;
-    }
-    chrome.storage.local.get(DEFAULT_DELETE_SETTINGS)
+    const loadSettings = async () =>
+      typeof chrome === "undefined" ? undefined : chrome.storage?.local?.get(DEFAULT_DELETE_SETTINGS);
+
+    loadSettings()
       .then((result) => {
+        if (!result) {
+          setSettingsError("設定を利用できません。Chromeで拡張機能を再読み込みしてください。");
+          return;
+        }
         setDeleteSettings({
           confirmSingleDelete: typeof result.confirmSingleDelete === "boolean" ? result.confirmSingleDelete : false,
           confirmDomainDelete: typeof result.confirmDomainDelete === "boolean" ? result.confirmDomainDelete : true,
